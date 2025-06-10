@@ -1,0 +1,23 @@
+# gRPC server configuration
+grpc_port: 5001
+
+# Model configuration
+version: "v15"
+vae_type: "sd-vae"
+unet_config: "./models/musetalk/musetalk.json"
+unet_model_path: "./models/musetalk/pytorch_model.bin"
+whisper_dir: "./models/whisper"
+
+# Avatar configuration
+avatar_id: "avator_1"  # Change this to your avatar ID
+bbox_shift: 0
+extra_margin: 10
+
+# Face parsing configuration
+left_cheek_width: 90
+right_cheek_width: 90
+parsing_mode: "jaw"
+
+# Audio processing configuration
+audio_padding_length_left: 2
+audio_padding_length_right: 2 

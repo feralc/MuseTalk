@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package lipsync;
+
+// Service definition for real-time lip sync
+service LipSyncService {
+  // StreamAudioToVideo streams audio and returns video frames
+  rpc StreamAudioToVideo(stream AudioChunk) returns (stream VideoFrame) {}
+}
+
+// AudioChunk represents a chunk of audio data
+message AudioChunk {
+  bytes audio_data = 1;  // Raw audio data
+  int32 sample_rate = 2; // Sample rate of the audio
+  int32 channels = 3;    // Number of audio channels
+}
+
+// VideoFrame represents a single video frame
+message VideoFrame {
+  bytes frame_data = 1;  // Raw video frame data (JPEG encoded)
+  int64 timestamp = 2;   // Timestamp of the frame
+} 
