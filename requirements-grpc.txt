@@ -1,6 +1,6 @@
 grpcio==1.62.0
 grpcio-tools==1.62.0
-numpy==1.22
+#numpy==1.22
 torch==2.0.1
 torchaudio==2.0.2
 opencv-python==4.9.0.80
