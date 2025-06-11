@@ -20,7 +20,7 @@ OPUS_SR   = 48_000
 MONO24_SR = 24_000
 WHISPER_SR= 16_000
 
-CHUNK_S   = 0.2                           # segundos por quadro (mude p/ 0.2, 0.04…)
+CHUNK_S   = 0.04                           # segundos por quadro (mude p/ 0.2, 0.04…)
 CHUNK_SMP = int(MONO24_SR*CHUNK_S)        # 24 000
 CHUNK_B   = CHUNK_SMP*2
 
