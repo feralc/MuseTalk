@@ -91,7 +91,7 @@ class LipSyncServicer(lipsync_pb2_grpc.LipSyncServiceServicer):
         self.vae,self.unet,self.pe = load_all_model(
             self.cfg.unet_model_path, self.cfg.vae_type, self.cfg.unet_config, device=self.dev)
         for m in (self.pe,self.vae.vae,self.unet.model):
-            (m.half_() if self.fp16 else m).to(self.dev)
+            (m.half() if self.fp16 else m).to(self.dev)
         self.whisper = WhisperModel.from_pretrained(self.cfg.whisper_dir)\
                          .to(self.dev,dtype=self.dtype).eval()
         self.fe = WhisperFeatureExtractor.from_pretrained(self.cfg.whisper_dir,padding="do_not_pad")
