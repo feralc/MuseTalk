@@ -4,16 +4,21 @@
 import os, sys, glob, copy, pickle, wave, subprocess, time, struct
 from concurrent.futures import ThreadPoolExecutor
 
+# --- third-party ----------------------------------------------------------------
 import grpc, numpy as np, cv2, torch, torch.nn.functional as F, av
 from scipy.signal import resample_poly
-from transformers import WhisperModel, WhisperFeatureExtractor
+from transformers import WhisperModel
 
+# --- MuseTalk -------------------------------------------------------------------
+# ensure the local 'proto' package is importable when running directly
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(ROOT, "proto"))
+
 from proto import lipsync_pb2, lipsync_pb2_grpc
 from musetalk.utils.utils import load_all_model
 from musetalk.utils.preprocessing import read_imgs
 from musetalk.utils.blending import get_image_blending
+from musetalk.utils.audio_processor import AudioProcessor
 
 # ─── parâmetros de áudio ────────────────────────────────────────────
 OPUS_SR   = 48_000
@@ -24,8 +29,9 @@ CHUNK_S   = 0.04                           # segundos por quadro (mude p/ 0.2, 0
 CHUNK_SMP = int(MONO24_SR*CHUNK_S)        # 24 000
 CHUNK_B   = CHUNK_SMP*2
 
-CTX_SEC   = 3.84
-CTX_SMP24 = int(MONO24_SR*CTX_SEC)        # 92 160
+# manter buffer de ~10s para seguir a abordagem solicitada
+CTX_SEC   = 10.0
+CTX_SMP24 = int(MONO24_SR*CTX_SEC)        # 240 000
 CTX_B24   = CTX_SMP24*2
 
 SAVE_MP3  = False
@@ -83,6 +89,7 @@ class LipSyncServicer(lipsync_pb2_grpc.LipSyncServiceServicer):
         self.hist   = PCMHistory()
 
         self.chunk_idx=0; self.fidx=0
+        self.vframe=0
         self._load_models(); self._load_avatar()
         self.t0=torch.tensor([0],device=self.dev)
 
@@ -94,7 +101,8 @@ class LipSyncServicer(lipsync_pb2_grpc.LipSyncServiceServicer):
             (m.half() if self.fp16 else m).to(self.dev)
         self.whisper = WhisperModel.from_pretrained(self.cfg.whisper_dir)\
                          .to(self.dev,dtype=self.dtype).eval()
-        self.fe = WhisperFeatureExtractor.from_pretrained(self.cfg.whisper_dir,padding="do_not_pad")
+        # Audio processor for realtime whisper prompts
+        self.ap = AudioProcessor(feature_extractor_path=self.cfg.whisper_dir)
 
     def _load_avatar(self):
         root=f"./results/{self.cfg.version}/avatars/{self.cfg.avatar_id}"
@@ -119,11 +127,23 @@ class LipSyncServicer(lipsync_pb2_grpc.LipSyncServiceServicer):
     # ---- gera JPEG ----------------------------------------------------------
     @torch.no_grad()
     def _make_frame(self)->bytes:
-        # resample high-quality 24k → 16k
+        # Resample buffer (24 kHz) to 16 kHz required by Whisper
         f32_16 = resample_poly(pcm16f32(self.hist.get_window()), WHISPER_SR, MONO24_SR).astype(np.float32)
-        mel = self.fe(f32_16, sampling_rate=WHISPER_SR, return_tensors="pt").input_features
-        mel = pad_crop(mel, 384).to(self.dev, dtype=self.dtype)
-        emb = self.pe(mel)
+
+        # Build prompt aligned to current video frame index
+        relative_idx = self.vframe % int(25*CTX_SEC)
+        audio_prompt = self.ap.build_audio_prompt_for_frame(
+            audio_samples=f32_16,
+            frame_index=relative_idx,
+            fps=25,  # default fps; adapt if needed
+            device=self.dev,
+            weight_dtype=self.dtype,
+            whisper=self.whisper,
+            audio_padding_length_left=self.cfg.audio_padding_length_left,
+            audio_padding_length_right=self.cfg.audio_padding_length_right,
+        )
+
+        emb = self.pe(audio_prompt)
 
         lat=self.lat[self.fidx].to(self.dev,dtype=self.unet.model.dtype)
         pred=self.unet.model(lat,self.t0,encoder_hidden_states=emb).sample
@@ -137,6 +157,7 @@ class LipSyncServicer(lipsync_pb2_grpc.LipSyncServiceServicer):
         ok,buf=cv2.imencode(".jpg",blended,[int(cv2.IMWRITE_JPEG_QUALITY),90])
         if not ok: raise RuntimeError("jpeg fail")
         self.fidx=(self.fidx+1)%len(self.lat)
+        self.vframe+=1
         return buf.tobytes()
 
     # ---- stream RPC ---------------------------------------------------------
