@@ -169,7 +169,7 @@ class LipSyncServicer(lipsync_pb2_grpc.LipSyncServiceServicer):
 def serve(cfg):
     srv=grpc.server(ThreadPoolExecutor(max_workers=10))
     lipsync_pb2_grpc.add_LipSyncServiceServicer_to_server(LipSyncServicer(cfg), srv)
-    srv.add_insecure_port(f"[::]:{cfg.grpc_port}")
+    srv.add_insecure_port(f"0.0.0.0:{cfg.grpc_port}")
     srv.start(); print(f"Servidor ativo (janela circular 3.84 s, {CHUNK_S}s por frame)")
     srv.wait_for_termination()
 
